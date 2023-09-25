@@ -1,0 +1,45 @@
+---
+- hosts: 192.168.56.105
+  become: true
+  tasks:
+  set_fact:
+    ansible_distro: "{{ ansible_distribution|lower|replace(' ', '_')|replace('/', '-') }}"
+
+     - name: Gather OS-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - files:
+      - "{{ ansible_distro }}-{{ ansible_distribution_version|lower|replace('/', '_') }}.yml"
+      - "{{ ansible_distro }}-{{ ansible_distribution_release }}.yml"
+      - "{{ ansible_distro }}-{{ ansible_distribution_major_version|lower|replace('/', '_') }}.yml"
+      - "{{ ansible_distro }}.yml"
+      - "{{ ansible_os_family|lower }}.yml"
+
+- name: Install packages
+  become: true
+  package:
+    name: "{{ pipenv_packages }}"
+    state: latest
+    update_cache: yes
+
+- name: Install pipenv
+  become: true
+  pip:
+    name: pipenv
+    executable: pip3
+
+- name: Check path for $HOME/.local/lib
+  when: ansible_distro == "ubuntu"
+  command: "awk /.local/ {{ ansible_env.HOME }}/.profile"
+  register: check_path
+  changed_when: False
+
+- name: Update path
+  when: is_ubuntu_1710 is defined and
+        (check_path.stdout is not undefined)
+  blockinfile:
+    path: "{{ ansible_env.HOME }}/.profile"
+    block: |
+      if [ -d "$HOME/.local/bin" ] ; then
+          PATH="$HOME/.local/bin:$PATH"
+      fi
